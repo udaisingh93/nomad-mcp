@@ -62,6 +62,10 @@ NOMAD_MCP_WRITE_MODE=on
 NOMAD_MCP_WRITE_TOOLS=stop_job,scale_task_group
 ```
 
+See [AUTOMATION.md](AUTOMATION.md) for recipes on using this to automate
+recurring Nomad tasks (health checks, auto-restart, scheduled scaling),
+including running an agent headlessly on a schedule instead of interactively.
+
 ## Using it with an MCP client
 
 The server is started as `node /path/to/nomad-mcp/src/index.js`, with config passed via environment variables. Point any MCP client's stdio server config at that command.
