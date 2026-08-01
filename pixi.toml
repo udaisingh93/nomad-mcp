@@ -1,0 +1,13 @@
+[workspace]
+authors = ["udaisingh93 <udai.singh93@gmail.com>"]
+channels = ["conda-forge"]
+name = "nomad-mcp"
+platforms = ["win-64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+install = "npm install"
+start = "node src/index.js"
+
+[dependencies]
+nodejs = ">=26.5.0,<26.6"
