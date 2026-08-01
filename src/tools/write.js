@@ -5,7 +5,7 @@ function json(data) {
   return { content: [{ type: "text", text: JSON.stringify(data ?? { ok: true }, null, 2) }] };
 }
 
-const ALL_WRITE_TOOLS = ["stop_job", "scale_task_group", "restart_allocation", "register_job"];
+const ALL_WRITE_TOOLS = ["stop_job", "scale_task_group", "reschedule_allocation", "restart_allocation", "register_job"];
 
 function enabledWriteTools() {
   const list = process.env.NOMAD_MCP_WRITE_TOOLS;
@@ -59,14 +59,27 @@ export function registerWriteTools(server) {
     );
   }
 
-  if (enabled.has("restart_allocation")) {
+  if (enabled.has("reschedule_allocation")) {
     server.tool(
-      "restart_allocation",
-      "Stop a single allocation, causing Nomad to reschedule it. Useful as a targeted 'restart' of one instance of a job.",
+      "reschedule_allocation",
+      "Stop a single allocation, causing Nomad to reschedule it as a brand-new allocation (possibly on a different node). This is Nomad's DELETE-equivalent /stop call, not an in-place restart — use restart_allocation if you want the same allocation's tasks restarted in place.",
       { allocId: z.string() },
       async ({ allocId }) => {
         requireWriteMode();
         return json(await nomadRequest("POST", `/v1/allocation/${encodeURIComponent(allocId)}/stop`));
+      }
+    );
+  }
+
+  if (enabled.has("restart_allocation")) {
+    server.tool(
+      "restart_allocation",
+      "Restart task(s) within a single allocation in place (same allocation ID, same node) — the direct equivalent of `nomad alloc restart`. Pass task to restart just one task, or omit it to restart all tasks in the allocation.",
+      { allocId: z.string(), task: z.string().optional().describe("Task name to restart; omit to restart all tasks") },
+      async ({ allocId, task }) => {
+        requireWriteMode();
+        const body = task ? { TaskName: task } : { AllTasks: true };
+        return json(await nomadRequest("POST", `/v1/client/allocation/${encodeURIComponent(allocId)}/restart`, { body }));
       }
     );
   }

@@ -16,7 +16,8 @@ Write tools, disabled by default (see [Write access](#write-access)):
 
 - `stop_job` — stop a job, optionally purge it
 - `scale_task_group` — set a task group's count
-- `restart_allocation` — stop a single allocation so Nomad reschedules it
+- `reschedule_allocation` — stop a single allocation so Nomad reschedules it as a new allocation (`POST /v1/allocation/:id/stop`)
+- `restart_allocation` — restart task(s) in an allocation in place, same allocation ID (`POST /v1/client/allocation/:id/restart`)
 - `register_job` — submit a job from HCL or JSON (create or update)
 
 ## Setup
