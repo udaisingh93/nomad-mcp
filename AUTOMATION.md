@@ -97,6 +97,51 @@ Tools used: `get_job_allocations`, `get_allocation_logs`, `reschedule_allocation
 (new allocation, in case the failure is node-specific) or `restart_allocation`
 (same allocation, if you want to preserve placement).
 
+### Stop every job in a namespace
+
+> "Stop every job in the `staging` namespace. List what you're about to stop
+> first and wait for me to confirm before doing it."
+
+Tools used: `list_jobs` (with `namespace: "staging"`) to enumerate, then
+`stop_job` once per job ID. There's no single "stop namespace" Nomad API
+call — the agent loops over the list. Asking it to list-then-confirm first
+is worth keeping in the prompt for anything namespace-wide, even in a
+headless run logged to a file, since a typo'd namespace filter (or a job
+that moved namespaces since the last check) is exactly the kind of mistake
+a confirm step catches.
+
+For an unattended/headless version of the same task (e.g. "tear down the
+`staging` namespace every Friday evening"), drop the confirmation and scope
+`NOMAD_MCP_WRITE_TOOLS=stop_job` plus a token whose ACL policy only grants
+`submit-job`/`dispatch-job` capability on that one namespace — so even if
+the prompt or the agent gets it wrong, it's structurally incapable of
+stopping anything outside `staging`.
+
+### Purge all dead jobs in a namespace
+
+> "List jobs in `staging`. For any with Status `dead`, purge them so they
+> stop showing up in job history."
+
+Tools used: `list_jobs`, `stop_job` with `purge: true`. Same "no bulk API,
+agent loops the list" shape as above — good for periodic cleanup instead of
+letting dead job history accumulate indefinitely.
+
+### Scale every task group in a namespace to zero (maintenance window)
+
+> "For every job in `batch`, get its task groups and scale each one to 0.
+> Keep a list of what the original counts were so I can restore them
+> afterward."
+
+Tools used: `list_jobs`, `get_job` (to read each `TaskGroups[].Count`
+before zeroing it — this is what makes restoring afterward possible),
+`scale_task_group`. Follow up later with:
+
+> "Scale `batch` back to the counts you recorded earlier."
+
+This pairs naturally with a maintenance-window cron pair, same as the
+scale-down/scale-up recipe below, but for a whole namespace instead of one
+job.
+
 ### Scheduled scale-down/scale-up
 
 > "It's after 8pm — scale `batch-worker`'s `worker` group to 0. Confirm the
