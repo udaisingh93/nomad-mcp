@@ -1,0 +1,67 @@
+# nomad-mcp image: build, check, push on the VM runner (host docker).
+#
+#   docker-image  docker build; the built image must answer /health and refuse
+#                 an unauthenticated /mcp; pushed only if it passes:
+#                 master -> :main and :<sha>, tag vX.Y.Z -> :X.Y.Z and :latest,
+#                 MR -> not pushed
+#
+# Deployed per beamline by terraform_deployment, as a sidecar in the nanobot job.
+
+stages:
+  - image
+
+variables:
+  # Docker build runner: the DESY VM runner, docker on the host (no dind service)
+  DOCKER_RUNNER_TAG: "vm-runner"
+  DOCKER_IMAGE: "docker:27-cli"
+
+.rules: &rules
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_TAG
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
+
+docker-image:
+  stage: image
+  tags: [$DOCKER_RUNNER_TAG]
+  image: $DOCKER_IMAGE
+  variables:
+    LOCAL_TAG: "nomad-mcp:ci-${CI_PIPELINE_ID}"
+    CHECK_NAME: "nomadmcp-ci-${CI_PIPELINE_ID}"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --pull -t "$LOCAL_TAG" .
+    # no token on 0.0.0.0 must be refused (a `!` line would not fail under set -e)
+    - if timeout 20 docker run --rm "$LOCAL_TAG"; then echo "started without MCP_AUTH_TOKEN"; exit 1; fi
+    - docker run -d --name "$CHECK_NAME" -e MCP_AUTH_TOKEN=ci "$LOCAL_TAG"
+    - >-
+      docker exec "$CHECK_NAME" node -e '
+      const h = (p, o = {}) => fetch("http://127.0.0.1:8000" + p, o).then(r => r.status);
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      (async () => {
+        for (let i = 0; ; i++) {
+          try { if (await h("/health") === 200) break; } catch {}
+          if (i >= 20) throw new Error("health");
+          await sleep(500);
+        }
+        if (await h("/mcp", { method: "POST" }) !== 401) throw new Error("auth");
+      })().catch(e => { console.error(e.message); process.exit(1); });'
+    - |
+      # main publishes as :main, the tag terraform_deployment pulls
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        TAGS="${CI_COMMIT_TAG#v} latest"
+      elif [ "${CI_COMMIT_BRANCH:-}" = "${CI_DEFAULT_BRANCH}" ]; then
+        TAGS="main ${CI_COMMIT_SHORT_SHA}"
+      else
+        TAGS=""
+        echo "not the default branch or a tag: built and checked, not pushed"
+      fi
+      for t in $TAGS; do
+        docker tag "$LOCAL_TAG" "${CI_REGISTRY_IMAGE}:${t}"
+        docker push "${CI_REGISTRY_IMAGE}:${t}"
+      done
+  after_script:
+    - docker rm -f "$CHECK_NAME" >/dev/null 2>&1 || true
+    - docker rmi "$LOCAL_TAG" >/dev/null 2>&1 || true
+  rules: *rules

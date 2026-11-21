@@ -1,0 +1,5 @@
+.git
+.pixi
+node_modules
+.env
+*.log

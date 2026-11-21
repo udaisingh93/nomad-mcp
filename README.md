@@ -46,6 +46,10 @@ Standard `nomad` CLI environment variables:
 | `NOMAD_NAMESPACE` | _(none)_ | Default namespace applied when a tool call doesn't specify one |
 | `NOMAD_SKIP_VERIFY` | `false` | Skip TLS certificate verification |
 | `NOMAD_CACERT` | _(none)_ | Path to a CA bundle for a private/internal CA |
+| `MCP_TRANSPORT` | `stdio` | `stdio`, or `http` for streamable HTTP at `/mcp` (stateless) |
+| `MCP_HOST` | `127.0.0.1` | HTTP listen address; anything off loopback requires `MCP_AUTH_TOKEN` |
+| `MCP_PORT` | `8000` | HTTP listen port |
+| `MCP_AUTH_TOKEN` | _(none)_ | HTTP only: clients must send `Authorization: Bearer <token>` |
 
 ### Write access
 
@@ -114,8 +118,19 @@ claude mcp add nomad node /path/to/nomad-mcp/src/index.js \
 
 (Check OpenCode's current docs for the exact config key names if this has changed — the important part is that it runs the same stdio command with the same environment variables.)
 
+### Running it as a service
+
+`MCP_TRANSPORT=http` serves streamable HTTP at `/mcp`, plus `GET /health`. The image (`Dockerfile`, built by `.gitlab-ci.yml`) defaults to http on `0.0.0.0:8000`, so it refuses to start without `MCP_AUTH_TOKEN` unless `MCP_HOST` is set back to loopback, as the nanobot sidecar in terraform_deployment does:
+
+```sh
+docker run --rm -p 8000:8000 -e MCP_AUTH_TOKEN=... -e NOMAD_ADDR=... -e NOMAD_TOKEN=... nomad-mcp
+claude mcp add --transport http nomad http://localhost:8000/mcp --header "Authorization: Bearer ..."
+```
+
 ## Security notes
 
 - `NOMAD_TOKEN` grants whatever an ACL policy allows — scope it to a policy with only the access this server actually needs (read-only policy if you're not enabling write mode).
 - Write mode lets a connected agent stop jobs, scale them, restart allocations, and submit new job specs. Only enable it for a token/environment you're comfortable an LLM acting autonomously could affect.
 - `register_job` submits directly to `/v1/jobs` with no dry-run step — review what an agent intends to submit before asking it to call this tool against a production namespace.
+- `NOMAD_NAMESPACE` is only a default: a tool call can name any namespace, including `*`. The ACL policy is what confines the server to a namespace.
+- Over HTTP, anyone who reaches the port acts with `NOMAD_TOKEN`; keep it on loopback or set `MCP_AUTH_TOKEN`.

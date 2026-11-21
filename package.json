@@ -1,6 +1,6 @@
 {
   "name": "nomad-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server exposing HashiCorp Nomad cluster operations as tools for MCP-compatible AI agents (Claude Code, Claude Desktop, OpenCode, etc.)",
   "type": "module",
   "main": "src/index.js",
